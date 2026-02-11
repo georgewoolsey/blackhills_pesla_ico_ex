@@ -1,5 +1,5 @@
 ---
-title: "ICO Thinning Example: UAS-SfM data from PSINF Ute Creek area"
+title: "ICO Thinning Example: ALS data from Black Hills Pe Sla project"
 subtitle: ""
 author: "Wade Tinkham & George Woolsey"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -13,7 +13,7 @@ editor_options:
 knit: (function(inputFile, encoding){ 
     out_dir <- '../';
     rmarkdown::render(inputFile, encoding = encoding, output_file=file.path(dirname(inputFile), out_dir, 'index.html'));
-    file.copy(from = "..//index.html", to = '..///data//psinf_utecreek_ico_ex.html', overwrite = TRUE)
+    file.copy(from = "..//index.html", to = '..///data//blackhills_pesla_ico_ex.html', overwrite = TRUE)
   })
 ---
 
@@ -43,30 +43,7 @@ knitr::opts_chunk$set(
 
 # Example Data
 
-The purpose of this analysis is to demonstrate how UAS-SfM aerial point cloud data processed with [`cloud2trees`](https://github.com/georgewoolsey/cloud2trees) can be used to inform treatment planning and design. This analysis will demonstrate how to process the spatial tree list following the methods defined in [Churchill et al. (2016)](https://scholarworks.umt.edu/ico/3) for ICO thinning. The objective is to demonstrate how the ICO method can be implemented to provide a cut-retention list based on target stand average density targets for clump proportions.
-
-UAS data collection missions were completed on the Pike-San Isabel National Forest (PSINF) in October 2025 as part of a demonstration to CFRI. Concurrent field data was collected by CFRI crews which will be used in later data validation efforts.
-
-**UAS Collection**
-
-* 130 ha flown in 1 day  
-* ~5,000 RGB images captured at 2.5 cm resolution  
-* Geo-rectified, wall-to-wall imagery  
-* Structure-from-Motion (SfM) point cloud with segmented trees  
-* Time commitment:
-  - 1.5 field days (7 people; but really 3 people since 4 were primarily observers)
-  - 1 day of processing (1 person)
-* Using a ~$30K drone flown at 600 ft
-  - Processing time will increase with a smaller drone and a 400 ft flying altitude
-  
-**Field Collection**
-
-- 26 one‑tenth–acre plots  
-- Approximately 1 plot per 10–15 acres, depending on stand density  
-- Standard forestry metrics with stem‑mapped overstory trees and saplings  
-- Time commitment:
-  - ~7 field days
-  - 3–4 people
+The purpose of this analysis is to demonstrate how ALS point cloud data processed with [`cloud2trees`](https://github.com/georgewoolsey/cloud2trees) can be used to inform treatment planning and design. This analysis will demonstrate how to process the spatial tree list following the methods defined in [Churchill et al. (2016)](https://scholarworks.umt.edu/ico/3) for ICO thinning. The objective is to demonstrate how the ICO method can be implemented to provide a cut-retention list based on target stand average density targets for clump proportions.
 
 load the standard libraries we use to do work 
 
@@ -148,26 +125,39 @@ calc_imperial_units_fn <- function(df) {
 
 load data
 
-```{r}
+```{r, results=F}
 # where is the processed data from cloud2trees?
 input_dir <- "../data/"
-# tree top points
-treetops_sf_with_dbh <- sf::st_read(file.path(input_dir, "West_Stand_final_detected_tree_points.gpkg"))
-# what?
-treetops_sf_with_dbh %>% dplyr::glimpse()
+treetops_data <- list.files(input_dir, pattern = ".*_final_detected_tree_points\\.(gpkg)$", full.names = T) %>% 
+  purrr::set_names() %>% 
+  purrr::map(~sf::st_read(.x,quiet=T))
+names(treetops_data) <- 
+  names(treetops_data) %>% 
+  basename() %>% 
+  tolower() %>% 
+  stringr::str_remove_all("_stand_final_detected_tree_points\\.(gpkg)$")
+# names(treetops_data)
 ```
 
-generate a stand boundary since we don't have one at the moment and look at where we are in the US
+what do we have?
 
 ```{r}
-stand_sf <- 
-  treetops_sf_with_dbh %>% 
-  sf::st_union() %>% 
-  sf::st_concave_hull(ratio = 0.08) %>% 
-  sf::st_buffer(2) %>% 
-  sf::st_as_sf() %>% 
-  dplyr::mutate(dummy=1) %>% 
-  sf::st_as_sfc()
+# what?
+treetops_data[[1]] %>% dplyr::glimpse()
+```
+
+load stand boundaries
+
+```{r}
+stand_sf <- sf::st_read("../data/PeSla_Stand_Boundaries.gpkg", quiet = T) %>% 
+  dplyr::rename_with(tolower) %>% 
+  dplyr::rename_with(stringr::str_squish) %>% 
+  dplyr::rename_with(make.names) %>% 
+  dplyr::rename_with(~stringr::str_replace_all(.x, "\\.{2,}", ".")) %>% 
+  dplyr::rename_with(~stringr::str_remove(.x, "\\.$")) %>% 
+  dplyr::rename_with(~stringr::str_replace_all(.x, "\\.", "_")) %>% 
+  dplyr::mutate(poly_name = tolower(poly_name))
+# identical(sf::st_crs(stand_sf), sf::st_crs(treetops_data[[3]]))
 # where?
 mapview::mapview(
   stand_sf
@@ -181,63 +171,39 @@ mapview::mapview(
 )
 ```
 
-```{r, include = F, eval = F}
-# !!!!!!!!!!!!!!!!!!!!!!!!!!for testing 
-new_stand_sf <- 
-  stand_sf %>% 
-  sf::st_point_on_surface() %>% 
-  sf::st_buffer(100) %>% 
-  sf::st_bbox() %>% 
-  sf::st_as_sfc()
-# where?
-mapview::mapview(
-  stand_sf
-  , color = "black"
-  , lwd = 2
-  , alpha.regions = 0
-  , label = FALSE
-  , legend = FALSE
-  , popup = FALSE
-  , layer.name = "stand boundary"
-) +
-  # where?
-  mapview::mapview(
-    new_stand_sf
-    , color = "red"
-    , lwd = 2
-    , alpha.regions = 0
-    , label = FALSE
-    , legend = FALSE
-    , popup = FALSE
-    , layer.name = "test stand boundary"
-  )
-stand_sf <- new_stand_sf
-```
-
 let's make a base `ggplot2` of the stand
 
 ```{r}
-plt_stand <- ggplot2::ggplot() +
-  ggplot2::geom_sf(data = stand_sf, color = "black", fill = NA) +
-  ggplot2::scale_x_continuous(expand = c(0, 0)) +
-  ggplot2::scale_y_continuous(expand = c(0, 0)) +
-  ggplot2::labs(
-    x = ""
-    , y = ""
-  ) +
-  ggplot2::theme_void() +
-  ggplot2::theme(
-    legend.position = "top" # c(0.5,1)
-    , legend.direction = "horizontal"
-    , legend.margin = ggplot2::margin(0,0,0,0)
-    , legend.text = ggplot2::element_text(size = 8)
-    , legend.title = ggplot2::element_text(size = 8)
-    , legend.key = ggplot2::element_rect(fill = NA, color = NA)
-    # , plot.title = ggtext::element_markdown(size = 10, hjust = 0.5)
-    , plot.title = ggplot2::element_text(size = 10, hjust = 0.5, face = "bold")
-    , plot.subtitle = ggplot2::element_text(size = 8, hjust = 0.5, face = "italic")
+plt_stand <- 
+  stand_sf$poly_name %>% 
+  unique() %>% 
+  purrr::set_names() %>% 
+  purrr::map(
+    \(x)
+    ggplot2::ggplot() +
+      ggplot2::geom_sf(data = stand_sf %>% dplyr::filter(poly_name==x), color = "black", fill = NA) +
+      ggplot2::scale_x_continuous(expand = c(0, 0)) +
+      ggplot2::scale_y_continuous(expand = c(0, 0)) +
+      ggplot2::labs(
+        x = ""
+        , y = ""
+        , subtitle = x
+      ) +
+      ggplot2::theme_void() +
+      ggplot2::theme(
+        legend.position = "top" # c(0.5,1)
+        , legend.direction = "horizontal"
+        , legend.margin = ggplot2::margin(0,0,0,0)
+        , legend.text = ggplot2::element_text(size = 8)
+        , legend.title = ggplot2::element_text(size = 8)
+        , legend.key = ggplot2::element_rect(fill = NA, color = NA)
+        # , plot.title = ggtext::element_markdown(size = 10, hjust = 0.5)
+        , plot.title = ggplot2::element_text(size = 10, hjust = 0.5, face = "bold")
+        , plot.subtitle = ggplot2::element_text(size = 8, hjust = 0.5, face = "italic")
+      )
   )
-# plt_stand
+  
+# plt_stand[[3]]
 ```
 
 ## Define Overstory and Clump Spacing

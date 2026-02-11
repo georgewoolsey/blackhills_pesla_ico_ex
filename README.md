@@ -1,3 +1,3 @@
-# ICO Thinning Example: UAS-SfM data from PSINF Ute Creek area
+# ICO Thinning Example: ALS data from Black Hills Pe Sla project
 
-[**Project site**](https://georgewoolsey.github.io/psinf_utecreek_ico_ex/)
+[**Project site**](https://georgewoolsey.github.io/blackhills_pesla_ico_ex/)
