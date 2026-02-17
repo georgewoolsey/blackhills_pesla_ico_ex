@@ -2443,8 +2443,9 @@ ico_implement_cuts <- function(
       ) %>% 
       # keep clumps closest the mean number in target
       dplyr::mutate(
-        pct_to_target = abs( (n_trees-mean_clump_n_trees)/mean_clump_n_trees )
+        pct_to_target = round( abs( (n_trees-mean_clump_n_trees)/mean_clump_n_trees ), 1)
       ) %>% 
+      ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! this currently prioritizes clumps with the closest TPA...could change to largest QMD
       dplyr::arrange(pct_to_target, desc(qmd_cm), n_trees, clump_id) %>% 
       dplyr::filter(dplyr::row_number()<=stand_n_clumps_target) %>% 
       dplyr::select(clump_id)
@@ -2555,8 +2556,9 @@ ico_implement_cuts <- function(
         ) %>% 
         # keep clumps closest the mean number in target group
         dplyr::mutate(
-          pct_to_target = abs( (n_trees-mean_clump_n_trees)/mean_clump_n_trees )
+          pct_to_target = round( abs( (n_trees-mean_clump_n_trees)/mean_clump_n_trees ), 1)
         ) %>% 
+        ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! this currently prioritizes clumps with the closest TPA...could change to largest QMD
         dplyr::arrange(pct_to_target, desc(qmd_cm), n_trees, clump_id) %>% 
         dplyr::filter(dplyr::row_number()<=stand_n_clumps_target) %>% 
         dplyr::select(clump_id)
@@ -2783,6 +2785,9 @@ ico_implement_cuts <- function(
       )
     ##########################################################
     ## update individuals to pick the largest if individuals is target group
+    ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! could also do this clump_id by clump_id within a clump size
+    ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!   to select the clump with the highest BA if keeping some groups within a clump size
+    ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!   or maybe we already do this based on how the clumps are cut?
     ##########################################################
       # is the smallest group with a target individuals?
       sm_grp_temp_is1 <- get_target_check_prescription_ans %>% 
@@ -2807,7 +2812,6 @@ ico_implement_cuts <- function(
       # nrow(clumps_reclass_df)
       # clumps_reclass_df %>% names()
       # clumps_reclass_df %>% dplyr::count(keep_trees)
-      # clumps_reclass_df %>% dplyr::filter(orig_clump_id=="1")
         
       if(
         sm_grp_temp_is1 # smallest is individual
