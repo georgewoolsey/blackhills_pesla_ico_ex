@@ -2753,56 +2753,197 @@ ico_implement_cuts <- function(
       paste("done cutting", sm_grp_temp, "at", Sys.time())
     )
   }
+  
+  ##########################################################
   # get the final prescription
-  # get_tree_clumps_ans %>% dplyr::select(tidyselect::starts_with("clump_n_trees_")) %>% names()
-  # get_tree_clumps_ans %>%
-  #   dplyr::rename_with(
-  #     .cols = tidyselect::starts_with("clump_")
-  #     , .fn = ~ paste0("orig_", .x, recycle0 = TRUE)
-  #   ) %>% 
-  #   names()
-  
-  prescription_trees <- 
-    get_tree_clumps_ans %>% 
-    dplyr::ungroup() %>% 
-    dplyr::left_join(
-      keep_trees
-      , by = "treeID"
-    ) %>% 
-    # tracking vars
-    dplyr::mutate(
-      # fill in keep tree flag
-      is_keep_tree = dplyr::coalesce(is_keep_tree, 0)
-    ) %>% 
-    dplyr::rename_with(
-      .cols = tidyselect::starts_with("clump_")
-      , .fn = ~ paste0("orig_", .x, recycle0 = TRUE)
-    )
-  
-  # attach the new clumping to the trees
-  prescription_trees <- prescription_trees %>% 
-    dplyr::left_join(
-      # reclump
-      prescription_trees %>% 
-        dplyr::filter(is_keep_tree == 1) %>% 
-        st_clump_points(
-          clump_dist_m = check_clump_breaks_temp$clump_dist_m
-          , clump_breaks = check_clump_breaks_temp$cut_breaks
-          , clump_labels = check_clump_breaks_temp$levels_clump_n_trees_grp
+  ##########################################################
+    # get_tree_clumps_ans %>% dplyr::select(tidyselect::starts_with("clump_n_trees_")) %>% names()
+    # get_tree_clumps_ans %>%
+    #   dplyr::rename_with(
+    #     .cols = tidyselect::starts_with("clump_")
+    #     , .fn = ~ paste0("orig_", .x, recycle0 = TRUE)
+    #   ) %>% 
+    #   names()
+    
+    prescription_trees <- 
+      get_tree_clumps_ans %>% 
+      dplyr::ungroup() %>% 
+      dplyr::left_join(
+        keep_trees
+        , by = "treeID"
+      ) %>% 
+      # tracking vars
+      dplyr::mutate(
+        # fill in keep tree flag
+        is_keep_tree = dplyr::coalesce(is_keep_tree, 0)
+      ) %>% 
+      dplyr::rename_with(
+        .cols = tidyselect::starts_with("clump_")
+        , .fn = ~ paste0("orig_", .x, recycle0 = TRUE)
+      )
+    ##########################################################
+    ## update individuals to pick the largest if individuals is target group
+    ##########################################################
+      # is the smallest group with a target individuals?
+      sm_grp_temp_is1 <- get_target_check_prescription_ans %>% 
+        dplyr::filter(
+          min_clump_n_trees == sm_grp_temp
+          & min_clump_n_trees == 1
+          & max_clump_n_trees == 1
         ) %>% 
+        nrow() %>% 
+        `==`(1)
+      # clumps with individuals available?
+      clumps_reclass_df <- prescription_trees %>% 
         sf::st_drop_geometry() %>% 
-        dplyr::select(treeID, tidyselect::starts_with("clump_")) %>% 
-        dplyr::rename_with(
-          .cols = tidyselect::starts_with("clump_")
-          , .fn = ~ paste0("new_", .x, recycle0 = TRUE)
+        dplyr::group_by(orig_clump_id) %>% 
+        dplyr::summarise(
+          keep_trees = sum(is_keep_tree)
+        ) %>% 
+        dplyr::filter(
+          # the new grouping has 1 or 0 trees
+          keep_trees <= 1
         )
-      , by = "treeID"
-    ) %>% 
-    dplyr::mutate(
-      new_clump_n_trees_grp = forcats::fct_na_value_to_level(new_clump_n_trees_grp, level = "Cut tree")
-    )
+      # nrow(clumps_reclass_df)
+      # clumps_reclass_df %>% names()
+      # clumps_reclass_df %>% dplyr::count(keep_trees)
+      # clumps_reclass_df %>% dplyr::filter(orig_clump_id=="1")
+        
+      if(
+        sm_grp_temp_is1 # smallest is individual
+        && nrow(clumps_reclass_df)>0 # have any individuals or fully cut
+        && any(clumps_reclass_df$keep_trees==1) # any clumps with 1 tree
+        && any(clumps_reclass_df$keep_trees==0) # any clumps fully cut that might reclass
+        && ( # size information available
+          any(stringr::str_equal(names(prescription_trees), "tree_height_m"))
+          || any(stringr::str_equal(names(prescription_trees), "dbh_cm"))
+        )
+      ){
+        # how many individuals do we need/currently have?
+        individs_needed <- clumps_reclass_df %>% dplyr::filter(keep_trees==1) %>% nrow()
+        
+        # this is easy...we just need to sort and keep the largest trees for individuals
+        if( any(stringr::str_equal(names(prescription_trees), "dbh_cm")) ){
+          # get them
+          new_keep_trees_df <- prescription_trees %>% 
+            sf::st_drop_geometry() %>% 
+            dplyr::select(orig_clump_id,treeID,dbh_cm) %>% 
+            dplyr::inner_join(
+              clumps_reclass_df, by = "orig_clump_id"
+            ) %>% 
+            dplyr::mutate(dbh_cm = as.numeric(dbh_cm)) %>% 
+            dplyr::group_by(orig_clump_id) %>% 
+            dplyr::slice_max(order_by = dbh_cm, n = 1, na_rm = F, with_ties = F) %>% 
+            dplyr::ungroup() %>% 
+            # take the top with NA's sorted last
+            dplyr::slice_max(order_by = dbh_cm, n = individs_needed, na_rm = F, with_ties = F) %>% 
+            dplyr::select(treeID) %>% 
+            dplyr::mutate(hey_new_keep_tree_xxx = 1)
+        }else if(
+          any(stringr::str_equal(names(prescription_trees), "tree_height_m"))
+        ){
+          # get them
+          new_keep_trees_df <- prescription_trees %>% 
+            sf::st_drop_geometry() %>% 
+            dplyr::select(orig_clump_id,treeID,tree_height_m) %>% 
+            dplyr::inner_join(
+              clumps_reclass_df, by = "orig_clump_id"
+            ) %>% 
+            dplyr::mutate(tree_height_m = as.numeric(tree_height_m)) %>% 
+            dplyr::group_by(orig_clump_id) %>% 
+            dplyr::slice_max(order_by = tree_height_m, n = 1, na_rm = F, with_ties = F) %>% 
+            dplyr::ungroup() %>% 
+            # take the top with NA's sorted last
+            dplyr::slice_max(order_by = tree_height_m, n = individs_needed, na_rm = F, with_ties = F) %>% 
+            dplyr::select(treeID) %>% 
+            dplyr::mutate(hey_new_keep_tree_xxx = 1)
+        }else{
+          stop("no tree size information...shouldn't have even entered this chunk")
+        }
+        ##########################
+        # update the prescription
+        ##########################
+          # prescription_trees %>%
+          #   sf::st_drop_geometry() %>%
+          #   dplyr::inner_join(
+          #     clumps_reclass_df %>%
+          #       dplyr::filter(keep_trees==1) %>%
+          #       dplyr::select(orig_clump_id)
+          #     , by = "orig_clump_id"
+          #   ) %>%
+          #   dplyr::select(dbh_cm,tree_height_m) %>%
+          #   summary()
+        
+        if(nrow(new_keep_trees_df)==individs_needed){
+          prescription_trees <-
+            prescription_trees %>% 
+            dplyr::left_join(
+              clumps_reclass_df %>% 
+                dplyr::select(orig_clump_id) %>% 
+                dplyr::mutate(hey_reclass_xxx = 1)
+              , by = "orig_clump_id"
+            ) %>% 
+            dplyr::left_join(
+              new_keep_trees_df
+              , by = "treeID"
+            ) %>% 
+            dplyr::mutate(
+              is_keep_tree = dplyr::case_when(
+                dplyr::coalesce(hey_reclass_xxx,0)==1 & dplyr::coalesce(hey_new_keep_tree_xxx,0)==1 ~ 1
+                , dplyr::coalesce(hey_reclass_xxx,0)==1 & dplyr::coalesce(hey_new_keep_tree_xxx,0)==0 ~ 0
+                , T ~ is_keep_tree
+              )
+            ) %>% 
+            dplyr::select(-c(hey_reclass_xxx,hey_new_keep_tree_xxx))
+        }
+        # clumps_reclass_df %>% dplyr::filter(keep_trees==1) %>% nrow()
+        # prescription_trees %>% 
+        #   sf::st_drop_geometry() %>% 
+        #   dplyr::group_by(orig_clump_id) %>% 
+        #   dplyr::summarise(
+        #     keep_trees = sum(is_keep_tree)
+        #   ) %>% 
+        #   dplyr::filter(
+        #     # the new grouping has 1 or 0 trees
+        #     keep_trees == 1
+        #   ) %>% 
+        #   nrow()
+        # prescription_trees %>%
+        #   sf::st_drop_geometry() %>%
+        #   dplyr::filter(is_keep_tree==1) %>% 
+        #   dplyr::group_by(orig_clump_id) %>%
+        #   dplyr::filter(dplyr::n()==1) %>%
+        #   dplyr::ungroup() %>%
+        #   dplyr::select(dbh_cm,tree_height_m) %>%
+        #   summary()
+      }
+  ##########################################################
+  # attach the new clumping to the trees
+  ##########################################################
+    # attach the new clumping to the trees
+    prescription_trees <- prescription_trees %>% 
+      dplyr::left_join(
+        # reclump
+        prescription_trees %>% 
+          dplyr::filter(is_keep_tree == 1) %>% 
+          st_clump_points(
+            clump_dist_m = check_clump_breaks_temp$clump_dist_m
+            , clump_breaks = check_clump_breaks_temp$cut_breaks
+            , clump_labels = check_clump_breaks_temp$levels_clump_n_trees_grp
+          ) %>% 
+          sf::st_drop_geometry() %>% 
+          dplyr::select(treeID, tidyselect::starts_with("clump_")) %>% 
+          dplyr::rename_with(
+            .cols = tidyselect::starts_with("clump_")
+            , .fn = ~ paste0("new_", .x, recycle0 = TRUE)
+          )
+        , by = "treeID"
+      ) %>% 
+      dplyr::mutate(
+        new_clump_n_trees_grp = forcats::fct_na_value_to_level(new_clump_n_trees_grp, level = "Cut tree")
+      )
   # save
-  prescription_trees %>% sf::st_write(my_fnm, append = F)
+  prescription_trees %>% sf::st_write(my_fnm, append = F, quiet = T)
   warning(paste0("wrote processed file to :\n     ", normalizePath(my_fnm)))
   return(normalizePath(my_fnm))
 }
