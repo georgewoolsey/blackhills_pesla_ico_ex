@@ -2365,7 +2365,7 @@ remove(list = ls()[grep("_temp",ls())])
 gc()
 ```
 
-## Implement Cutting
+# Implement Cutting
 
 cut groups incrementally to achieve target tree clump group size proportions
 
@@ -3093,7 +3093,7 @@ remove(list = ls()[grep("_temp",ls())])
 gc()
 ```
 
-### Visualize Results
+## Visualize Results
 
 ```{r,eval=T, results=F}
 # color the grps
@@ -3301,9 +3301,9 @@ get_the_plts_ans <-
   purrr::map(get_the_plts_temp)
 ```
 
-#### Pre-Treatment
+### Pre-Treatment
 
-##### Distance to Nearest
+#### Distance to Nearest
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3313,7 +3313,7 @@ get_the_plts_ans %>%
   )
 ```
 
-##### Distance + Openinings
+#### Distance + Openinings
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3330,9 +3330,9 @@ get_the_plts_ans %>%
   )
 ```
 
-#### Post-Treatment
+### Post-Treatment
 
-##### Distance to Nearest
+#### Distance to Nearest
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3342,7 +3342,7 @@ get_the_plts_ans %>%
   )
 ```
 
-##### Distance + Openinings
+#### Distance + Openinings
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3359,9 +3359,9 @@ get_the_plts_ans %>%
   )
 ```
 
-#### Pre- vs Post-Treatment
+### Pre- vs Post-Treatment
 
-##### Distance to Nearest
+#### Distance to Nearest
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3372,7 +3372,7 @@ get_the_plts_ans %>%
   )
 ```
 
-##### Openings
+#### Openings
 
 ```{r, eval=T, results=F, fig.show='asis'}
 get_the_plts_ans %>% 
@@ -3383,9 +3383,9 @@ get_the_plts_ans %>%
   )
 ```
 
-### Tabular Results
+## Tabular Results
 
-#### Post-Treatment
+### Post-Treatment
 
 compare to [pre-treatment table](#clump_metrics)
 
@@ -3448,7 +3448,7 @@ clump_n_trees_grp_summary2 %>%
   kableExtra::collapse_rows(columns = 1, valign = "top")
 ```
 
-#### Current, target, prescription
+### Current, target, prescription
 
 current versus targets versus prescription 
 
@@ -3511,13 +3511,14 @@ stand_boundaries$poly_name %>%
   kableExtra::collapse_rows(columns = 1, valign = "top")
 ```
 
-#### pre- and post-treatment clump summary
+### pre- and post-treatment clump summary
 
 check the pre- and post-treatment summary
 
 ```{r}
 # table it
-stand_boundaries$poly_name %>% 
+df_temp <- 
+  stand_boundaries$poly_name %>% 
   unique() %>% 
   purrr::map(
     \(nm)
@@ -3557,7 +3558,8 @@ stand_boundaries$poly_name %>%
     )
   ) %>% 
   dplyr::bind_rows() %>% 
-  dplyr::relocate(stand) %>% 
+  dplyr::relocate(stand)
+df_temp %>% 
   kableExtra::kbl(
     digits = 1
     , escape = F
@@ -3579,7 +3581,98 @@ stand_boundaries$poly_name %>%
   kableExtra::collapse_rows(columns = 1:2, valign = "top")
 ```
 
-#### Stand Aggregates
+```{r, eval = F, include=FALSE}
+df_temp %>% 
+  dplyr::filter(stand=="west") %>% 
+  dplyr::mutate(presc = ordered(presc) %>% forcats::fct_rev()) %>%
+  dplyr::select(-tidyselect::starts_with("pct_")) %>% 
+  tidyr::pivot_longer(cols = -c(stand,clump_n_trees_grp,presc)) %>% 
+  dplyr::group_by(stand,clump_n_trees_grp,name) %>% 
+  dplyr::arrange(stand,clump_n_trees_grp,name,presc) %>% 
+  dplyr::mutate(pct_diff = (value-dplyr::lag(value))/dplyr::lag(value)) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::mutate(
+    lab = paste0(
+      dplyr::case_when(
+        name == "n_trees" ~ scales::comma(value,accuracy=1)
+        , T ~ scales::comma(value,accuracy=0.1)
+      )
+      , dplyr::case_when(
+        is.na(pct_diff) ~ ""
+        , T ~ paste0(
+          "\n"
+          , ifelse(pct_diff<0,"-","+")
+          ,scales::percent(abs(pct_diff),accuracy=0.1)
+        )
+      )
+    )
+    , metric = factor(
+      name
+      , ordered = T
+      , levels = c(
+          "n_trees"
+          ,"mean_dbh_in"
+          ,"qmd_in"
+          ,"mean_tree_height_ft"
+          ,"loreys_height_ft"
+          ,"trees_per_ac"
+          ,"basal_area_ft2_per_ac"
+        )
+      , labels = c(
+          latex2exp::TeX("Number of Trees", output = "character")
+          , latex2exp::TeX("Mean DBH (in)", output = "character")
+          , latex2exp::TeX("QMD (in)", output = "character")
+          , latex2exp::TeX("Mean Tree Height (ft)", output = "character")
+          , latex2exp::TeX("Lorey's Mean Height (ft)", output = "character")
+          , latex2exp::TeX("Trees $ac^{-1}$")
+          , latex2exp::TeX("Basal Area $ft^{2} \\cdot ac^{-1}$")
+        )
+    )
+    , 
+  ) %>% 
+  ggplot2::ggplot(
+    mapping = ggplot2::aes(
+      x = presc
+      , y = value
+      , label = lab
+      , group = clump_n_trees_grp
+    )
+  ) +
+  ggplot2::geom_line(key_glyph = "point", alpha = 0.7, color = "gray", lwd = 1.1) +
+  ggplot2::geom_col(mapping = ggplot2::aes(fill = presc), alpha = 1, width = 0.4) +
+  harrypotter::scale_color_hp_d(option = "lunalovegood") +
+  harrypotter::scale_fill_hp_d(option = "lunalovegood") +
+  ggplot2::geom_text(
+    vjust = -0.25
+  ) +
+  ggplot2::facet_grid(
+    rows = dplyr::vars(name)
+    , cols = dplyr::vars(clump_n_trees_grp)
+    , scales = "free_y"
+    # , labeller = ggplot2::label_parsed
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::comma, expand = ggplot2::expansion(mult = c(0,.3)), breaks = NULL) +
+  ggplot2::labs(
+    x = "", y = ""
+    , subtitle = ""
+  ) +
+  ggplot2::theme_light() +
+  ggplot2::theme(
+    legend.position = "none"
+    , axis.text.x = ggplot2::element_text(size = 11, color = "black", face = "bold")
+    , strip.text.x = ggplot2::element_text(size = 11, color = "black", face = "bold")
+    , strip.text.y = ggplot2::element_text(size = 9, color = "black", face = "bold")
+    , panel.grid = ggplot2::element_blank()
+  ) 
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, include=FALSE}
+remove(list = ls()[grep("_temp",ls())])
+remove(get_the_plts_ans)
+gc()
+```
+
+## Stand Aggregates
 
 current versus targets versus prescription 
 
@@ -3639,6 +3732,262 @@ stand_boundaries$poly_name %>%
   ) %>% 
   kableExtra::column_spec(seq(1,10,by=3), border_right = TRUE, include_thead = TRUE)
 ```
+
+current versus prescription at the stand level
+
+```{r}
+# create a function to summarize by number of tree clump grouping
+get_stand_summary = function(get_tree_clumps_ans, stand_sf){
+  # get area of harvest unit
+  #...will use this area in the area calculations such that...
+  #...TPA = trees in a certain group size across the whole stand area
+  harvest_area_ha <- stand_sf %>%
+    sf::st_union() %>% 
+    sf::st_as_sf() %>% 
+    dplyr::mutate(harvest_area_ha = sf::st_area(.) %>% as.numeric() %>% `/`(10000)) %>% 
+    dplyr::pull(harvest_area_ha) %>% 
+    .[1]
+  # collapse and calculate silv metrics
+  dta <- get_tree_clumps_ans %>% 
+    sf::st_drop_geometry() %>% 
+    dplyr::mutate(stand_area_ha = harvest_area_ha) %>% 
+    dplyr::group_by(stand_area_ha) %>%
+    dplyr::summarise(
+      # summary metrics
+      n_trees = dplyr::n()
+      , mean_dbh_cm = mean(dbh_cm, na.rm = T)
+      , mean_tree_height_m = mean(tree_height_m, na.rm = T)
+      , loreys_height_m = sum(basal_area_m2*tree_height_m, na.rm = T) / sum(basal_area_m2, na.rm = T)
+      , basal_area_m2 = sum(basal_area_m2, na.rm = T)
+      , sum_dbh_cm_sq = sum(dbh_cm^2, na.rm = T)
+    ) %>%
+    dplyr::ungroup() %>% 
+    dplyr::mutate(
+      trees_per_ha = (n_trees/stand_area_ha) # (n_trees/clump_area_ha) ... this was not right
+      , basal_area_m2_per_ha = (basal_area_m2/stand_area_ha) # (basal_area_m2/clump_area_ha) ... this was not right
+      , qmd_cm = sqrt(sum_dbh_cm_sq/n_trees)
+      # stand calcs
+      , stand_trees_per_ha = sum(n_trees)/stand_area_ha
+      , stand_basal_area_m2 = sum(basal_area_m2)
+      , stand_basal_area_m2_per_ha = sum(basal_area_m2)/stand_area_ha
+      , pct_stand_basal_area = basal_area_m2/stand_basal_area_m2
+      , pct_stand_n_trees = n_trees/sum(n_trees)
+      , stand_qmd_cm = sqrt(sum(get_tree_clumps_ans$dbh_cm^2, na.rm = T)/sum(n_trees))
+    ) %>%
+    dplyr::select(-c(sum_dbh_cm_sq)) %>% 
+    # convert to imperial units
+    calc_imperial_units_fn()
+  # return
+  return(dta)
+}
+get_stand_summary_ans <-
+  stand_boundaries$poly_name %>% 
+  unique() %>% 
+  purrr::map(
+    \(x)
+    dplyr::bind_rows(
+      get_stand_summary(
+        treetops_clustered_new[[x]]
+        , stand_sf = stand_boundaries %>% dplyr::filter(poly_name==x)
+      ) %>% 
+      dplyr::mutate(stand = x, presc = "post-treatment")
+      , get_stand_summary(
+        treetops_clustered[[x]]
+        , stand_sf = stand_boundaries %>% dplyr::filter(poly_name==x)
+      ) %>% 
+      dplyr::mutate(stand = x, presc = "pre-treatment")
+    )
+  ) %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::mutate(presc = ordered(presc) %>% forcats::fct_rev()) %>% 
+  dplyr::select(
+    stand, presc
+    , n_trees
+    , mean_dbh_in
+    , qmd_in
+    , mean_tree_height_ft
+    , loreys_height_ft
+    , trees_per_ac
+    , basal_area_ft2_per_ac
+  )
+```
+
+table it
+
+```{r}
+get_stand_summary_ans %>% 
+  dplyr::arrange(stand, presc) %>% 
+  kableExtra::kbl(
+    digits = 1
+    , escape = F
+    , caption = "Pre- and Post-treatment overstory summary by stand"
+    , col.names = c(
+      "stand", ""
+      , "trees"
+      , "mean<br>DBH (in)"
+      , "QMD (in)"
+      , "mean<br>Ht. (ft)"
+      , "Loreys<br>Ht. (ft)"
+      , "TPA"
+      , "BA<br>ft<sup>2</sup> ac<sup>-1</sup>"
+      )
+  ) %>% 
+  kableExtra::kable_styling(font_size = 12) %>% 
+  kableExtra::collapse_rows(columns = 1:2, valign = "top")
+```
+
+plot it
+
+```{r, fig.height=11.3, fig.width=8}
+get_stand_summary_ans %>%
+  tidyr::pivot_longer(cols = -c(stand,presc)) %>% 
+  dplyr::group_by(stand,name) %>% 
+  dplyr::arrange(stand,name,presc) %>% 
+  dplyr::mutate(pct_diff = (value-dplyr::lag(value))/dplyr::lag(value)) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::mutate(
+    lab = paste0(
+      dplyr::case_when(
+        name == "n_trees" ~ scales::comma(value,accuracy=1)
+        , T ~ scales::comma(value,accuracy=0.1)
+      )
+      , dplyr::case_when(
+        is.na(pct_diff) ~ ""
+        , T ~ paste0(
+          "\n"
+          , ifelse(pct_diff<0,"-","+")
+          ,scales::percent(abs(pct_diff),accuracy=0.1)
+        )
+      )
+    )
+    , metric = factor(
+      name
+      , ordered = T
+      , levels = c(
+          "n_trees"
+          ,"mean_dbh_in"
+          ,"qmd_in"
+          ,"mean_tree_height_ft"
+          ,"loreys_height_ft"
+          ,"trees_per_ac"
+          ,"basal_area_ft2_per_ac"
+        )
+      , labels = c(
+          latex2exp::TeX("Number of Trees", output = "character")
+          , latex2exp::TeX("Mean DBH (in)", output = "character")
+          , latex2exp::TeX("QMD (in)", output = "character")
+          , latex2exp::TeX("Mean Tree Ht (ft)", output = "character")
+          , latex2exp::TeX("Lorey's Mean Ht (ft)", output = "character")
+          , latex2exp::TeX("Trees $ac^{-1}$")
+          , latex2exp::TeX("BA $ft^{2} \\cdot ac^{-1}$")
+        )
+    )
+    , 
+  ) %>% 
+  ggplot2::ggplot(
+    mapping = ggplot2::aes(
+      x = presc
+      , y = value
+      , label = lab
+      , group = 1
+    )
+  ) +
+  ggplot2::geom_line(key_glyph = "point", alpha = 0.7, color = "gray", lwd = 1.1) +
+  ggplot2::geom_col(mapping = ggplot2::aes(fill = presc), alpha = 1, width = 0.4) +
+  ggplot2::scale_fill_viridis_d(option = "cividis") +
+  ggplot2::geom_text(
+    vjust = -0.25, size = 2.5
+  ) +
+  ggplot2::facet_grid(
+    rows = dplyr::vars(metric)
+    , cols = dplyr::vars(stand)
+    , scales = "free_y"
+    , labeller = ggplot2::label_parsed
+    , switch = "y"
+    , axes = "all_x"
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::comma, expand = ggplot2::expansion(mult = c(0,.3)), breaks = NULL) +
+  ggplot2::labs(
+    x = "", y = ""
+    , subtitle = ""
+  ) +
+  ggplot2::theme_light() +
+  ggplot2::theme(
+    legend.position = "none"
+    , axis.text.x = ggplot2::element_text(size = 8, color = "black")
+    , strip.text.x = ggplot2::element_text(size = 11, color = "black", face = "bold")
+    , strip.text.y = ggplot2::element_text(size = 9, color = "black")
+    , panel.grid = ggplot2::element_blank()
+  ) 
+```
+
+height and diameter distributions
+
+```{r, fig.height = 8}
+treetops_clustered %>% 
+  purrr::imap(
+    \(x,nm)
+    x %>% 
+    sf::st_drop_geometry() %>% 
+    dplyr::select(tree_height_m, dbh_cm) %>% 
+    calc_imperial_units_fn() %>% 
+    dplyr::select(-c(tree_height_m, dbh_cm)) %>% 
+    tidyr::pivot_longer(dplyr::everything()) %>% 
+    dplyr::mutate(stand = nm, presc = "pre-treatment")
+  ) %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::bind_rows(
+   treetops_clustered_new %>% 
+    purrr::imap(
+      \(x,nm)
+      x %>% 
+      sf::st_drop_geometry() %>% 
+      dplyr::select(tree_height_m, dbh_cm) %>% 
+      calc_imperial_units_fn() %>% 
+      dplyr::select(-c(tree_height_m, dbh_cm)) %>% 
+      tidyr::pivot_longer(dplyr::everything()) %>% 
+      dplyr::mutate(stand = nm, presc = "post-treatment")
+    ) %>% 
+    dplyr::bind_rows()
+  ) %>% 
+  
+  dplyr::mutate(
+    presc = ordered(presc) %>% forcats::fct_rev()
+    , name = dplyr::case_match(
+      name
+      , "tree_height_ft" ~ "Tree Height (ft)"
+      , "dbh_in" ~ "DBH (in)"
+    )
+  ) %>%
+  
+  ggplot2::ggplot(mapping = ggplot2::aes(x=value,fill = presc,color = presc)) +
+    ggplot2::geom_density(mapping = ggplot2::aes(y=ggplot2::after_stat(scaled)), alpha = 0.7, color=NA) +
+    # ggplot2::geom_histogram(alpha = 0.7) +
+    ggplot2::facet_grid(
+      cols = dplyr::vars(name)
+      , rows = dplyr::vars(stand)
+      , switch = "y"
+      , axes = "all_x"
+      , scales = "free"
+    ) +
+    ggplot2::scale_y_continuous(NULL,breaks=NULL) +
+    ggplot2::scale_x_continuous(limits = c(0,NA), labels = scales::comma) +
+    ggplot2::scale_fill_viridis_d(option = "cividis") +
+    ggplot2::scale_color_viridis_d(option = "cividis") +
+    ggplot2::labs(
+      fill="",x=""
+      , subtitle = "comparison of height and diameter distributions\npre- versus post-treatment"
+    ) +
+    ggplot2::theme_light() +
+    ggplot2::theme(
+      legend.position = "top"
+      , strip.text = ggplot2::element_text(size = 10, color = "black", face = "bold")
+      , axis.text.x = ggplot2::element_text(size = 9)
+      , axis.text.y = ggplot2::element_blank()
+      , axis.ticks.y = ggplot2::element_blank()
+    )
+```
+
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE, include=FALSE}
 remove(list = ls()[grep("_temp",ls())])
